@@ -11,7 +11,7 @@ class MySpirit40:
     def __init__(self, init_pos, dt):
 
         self.planeid   = p.loadURDF("plane.urdf")
-        self.robotid   = p.loadURDF("/home/mkylmz/Desktop/quadro-raibertus/src/myspirit40.urdf", init_pos)
+        self.robotid   = p.loadURDF("./myspirit40.urdf", init_pos)
         self.reset_pos = init_pos
         self.reset_ori = [0,0,0,1]
         self.pos       = init_pos
