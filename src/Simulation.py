@@ -31,10 +31,17 @@ class Simulation:
         """
 
         while p.isConnected():
+
+            start = time.time()
+            
             p.stepSimulation()
-            time.sleep(self.dt)
             self.robot.checkNeedRestart()
             self.robot.control()
+
+            end = time.time()
+            diff = self.dt-(end - start)
+            if diff > 0:
+                time.sleep(diff)
         pass
 
 

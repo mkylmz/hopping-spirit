@@ -6,6 +6,7 @@ import pathlib
 import rbdyn as rbd
 import eigen as e
 import picos
+import time
 
 class MySpirit40:
     """
@@ -33,16 +34,11 @@ class MySpirit40:
         self.L2 = 0.206
 
         self.Kp = 100
-        self.Kd = 10
-        self.desired_pos = [0,0,0.25]
+        self.Kd = 2
+        self.desired_pos = [0,0,0.30]
         self.desired_vel = [0,0,0]
         self.desired_acc = [0,0,0]
-        self.friction_coeff = 0.35
-
-        self.pos_kp  = 100
-        self.pos_kd  = 10
-        self.ori_kp  = 100
-        self.ori_kd  = 10
+        self.friction_coeff = 0.60/math.sqrt(2)
 
         #Controller parameters
         self.rest_length = 0.2913 # Desired virtual leg length
@@ -247,13 +243,13 @@ class MySpirit40:
         ## Calculate CoM Jacobian and its derivative
         jac_com = rbd.CoMJacobian(self.dyn.mb)
         self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
-        self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
+        #self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
         self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
 
         ## Initialize PICOS problem
         P = picos.Problem()
         P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-5
+        P.options["*_tol"] = 10e-6
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
@@ -273,9 +269,9 @@ class MySpirit40:
             if self.inContact[leg_i]:
                 J_foot = picos.Constant( "J_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
                 f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
-                P.add_constraint(f_foot[2] >= 0)
-                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
-                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
+                P.add_constraint(f_foot[2] <= 0)
+                P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
+                P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
                 if not first_contact:
                     first_contact = True
                     contact_force = J_foot*f_foot
@@ -288,7 +284,7 @@ class MySpirit40:
             P.add_constraint(M*qdotdot+N==S*torques+contact_force)
         
         ## Torque constraint
-        P.add_constraint(abs(torques) <= 12.0)
+        P.add_constraint(abs(torques) <= 20.0)
         
         ## Solve
         #print(P)
@@ -296,7 +292,9 @@ class MySpirit40:
             solution = P.solve()
             self.target_torques[6:18] = np.array(torques.value).reshape(12,)
         except ValueError:
-            print("ValueError is given!")
+            print("ValueError is given at " + str(time.time()) + " !")
+        except picos.modeling.problem.SolutionFailure:
+            print("Solution not found at  " + str(time.time()) + " !")
         
     def handleStance(self,leg_index):
         
@@ -375,33 +373,6 @@ class MySpirit40:
                     math.cos( aoa ) * slip_state[2]
         return [L, L_dot, aoa, aoa_dot]
 
-    def getTargetForce(self, leg_index):
-        
-        base_force = self.mass*2.5
-        reqF = np.array([0, 0, base_force])
-
-        [base_pos, base_ori] = p.getBasePositionAndOrientation(self.robotid)
-        base_ori = p.getEulerFromQuaternion(base_ori)
-        [base_linvel, base_angvel] = p.getBaseVelocity(self.robotid)
-        
-        reqF += np.array([  -self.pos_kp*base_pos[0] - self.pos_kd*base_linvel[0], 
-                            -self.pos_kp*base_pos[1] - self.pos_kd*base_linvel[1], 
-                            -self.pos_kp*(self.hip_height[leg_index]-self.rest_length)  - self.pos_kd*base_linvel[2] ])
-        
-        if (leg_index == 0):   # FL
-            reqF += np.array([0, 0, -self.ori_kp*base_ori[0] - self.ori_kd*base_angvel[0] + self.ori_kp*base_ori[1] + self.ori_kd*base_angvel[1] ])
-
-        elif (leg_index == 1): # RL
-            reqF += np.array([0, 0, -self.ori_kp*base_ori[0] - self.ori_kd*base_angvel[0] - self.ori_kp*base_ori[1] - self.ori_kd*base_angvel[1] ]) 
-
-        elif (leg_index == 2): # FR
-            reqF += np.array([0, 0,  self.ori_kp*base_ori[0] + self.ori_kd*base_angvel[0] + self.ori_kp*base_ori[1] + self.ori_kd*base_angvel[1] ]) 
-
-        elif (leg_index == 3): # RR
-            reqF += np.array([0, 0,  self.ori_kp*base_ori[0] + self.ori_kd*base_angvel[0] - self.ori_kp*base_ori[1] - self.ori_kd*base_angvel[1] ]) 
-
-        return reqF
-    
     def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
         pos_error = np.array(desired_pos)-np.array(self.body_pos[0])
         vel_error = np.array(desired_vel)-self.body_vel[0:3]
