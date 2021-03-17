@@ -130,6 +130,8 @@ class MySpirit40:
             self.LEGS[3] : [0,0,0,0,0,0]
         }
 
+        self.SelMat = [np.zeros((12,6),np.float64), np.ones((12,12),np.float64)]
+
         self.inContact = [False,False,False,False]
 
         # Variable matrices for equations of motion
@@ -142,6 +144,8 @@ class MySpirit40:
             for j in range(12):
                 self.SMatrix[i][j]
         self.target_torques = np.array([0.0 for i in range(18)])
+        self.qdot = np.array([0.0 for i in range(18)])
+        self.qdotdot = np.array([0.0 for i in range(18)])
         self.hip_height     = np.array([0.0 for i in range(4)])
         self.body_vel       = np.array([0.0 for i in range(6)])
         self.body_vel_old   = np.array([0.0 for i in range(6)])
@@ -202,6 +206,7 @@ class MySpirit40:
         self.target_torques[0:6] = self.body_acc
         self.body_pos = p.getBasePositionAndOrientation(self.robotid)
         body_pos =  [self.body_pos[1][3]] + list(self.body_pos[1][0:3]) + list(self.body_pos[0])
+        self.qdotdot = self.target_torques
         
     
         ## update position and oritentation with forward kinematics
@@ -251,7 +256,7 @@ class MySpirit40:
 
         min_i = 6+leg_index*3
         max_i = 6+leg_index*3+3
-        equ_M = (np.array(self.MassMatrix) @ self.target_torques.T)[min_i:max_i].T
+        equ_M = (np.array(self.MassMatrix) @ self.qdotdot.T)[min_i:max_i].T
         equ_N = np.array(self.NMatrix[min_i:max_i]).reshape(1,3)
         equ_J = np.array(self.JacT)[leg_index][:,min_i:max_i]
         equ_F = (np.transpose(equ_J) @ req_F).reshape(1,3)
