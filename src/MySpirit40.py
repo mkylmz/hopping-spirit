@@ -32,6 +32,12 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
+        self.Kp = 100
+        self.Kd = 100
+        self.desired_pos = [0,0,0.20]
+        self.desired_vel = [0,0,0]
+        self.desired_acc = [0,0,0]
+
         self.pos_kp  = 100
         self.pos_kd  = 10
         self.ori_kp  = 100
@@ -246,21 +252,46 @@ class MySpirit40:
         ## Initialize PICOS problem
         P = picos.Problem()
         P.options.solver = "cvxopt"
+        P.options["*_tol"] = 10e-6
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
         qdotdot = picos.RealVariable("qdotdot", (18,1) ) 
         normal_acc = picos.Constant("normal_acc", self.normal_acc, (3,1))
-        P.set_objective("min", abs(CoM_Jac*qdotdot+normal_acc)**2 )
+        self.target_acc = self.calcTargetAcc(self.desired_pos, self.desired_vel, self.desired_acc) 
+        target_acc = picos.Constant("target_acc", self.target_acc.T, (3,1))
+        P.set_objective("min", abs(CoM_Jac*qdotdot+normal_acc-target_acc)**2 )
 
         ## Define motion constraint
         M = picos.Constant("M", self.MassMatrix, (18,18) )
         N = picos.Constant("N", self.NMatrix, (18,1) )
         S = picos.Constant("S", self.SelMat.T, (18,12))
-        torques = picos.RealVariable("torques", (12,1) ) 
+        torques = picos.RealVariable("torques", (12,1) )
+        first_contact = False
+        for leg_i in range(4):
+            if self.inContact[leg_i]:
+                J_foot = picos.Constant( "J_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
+                f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
+                if not first_contact:
+                    first_contact = True
+                    contact_force = J_foot*f_foot
+                else:
+                    contact_force = contact_force + J_foot*f_foot
 
+        if not first_contact:
+            P.add_constraint(M*qdotdot+N==S*torques)
+        else:
+            P.add_constraint(M*qdotdot+N==S*torques+contact_force)
         
+        ## Torque constraint
+        P.add_constraint(torques >= -8.0)
+        P.add_constraint(torques <=  8.0)
         
+        ## Solve
+        print(P)
+        solution = P.solve()
+        self.target_torques[6:18] = np.array(torques.value).reshape(12,)
+        print(self.target_torques[6:18])
         pass
 
     def handleStance(self,leg_index):
@@ -271,7 +302,7 @@ class MySpirit40:
             p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, 0, force=0)            
             self.inContact[leg_index] = True
 
-        req_F = self.getTargetForce(leg_index)
+        """req_F = self.getTargetForce(leg_index)
 
         min_i = 6+leg_index*3
         max_i = 6+leg_index*3+3
@@ -279,7 +310,10 @@ class MySpirit40:
         equ_N = np.array(self.NMatrix[min_i:max_i]).reshape(1,3)
         equ_J = np.array(self.JacT)[leg_index][:,min_i:max_i]
         equ_F = (np.transpose(equ_J) @ req_F).reshape(1,3)
-        self.target_torques[min_i:max_i] = equ_M + equ_N - equ_F
+        self.target_torques[min_i:max_i] = equ_M + equ_N - equ_F"""
+
+        min_i = 6+leg_index*3
+        max_i = 6+leg_index*3+3
         [T_Hip_Torq, T_Upper_Torq, T_Lower_Torq] = self.target_torques[min_i:max_i]
 
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.TORQUE_CONTROL, force=T_Hip_Torq)
@@ -363,3 +397,9 @@ class MySpirit40:
             reqF += np.array([0, 0,  self.ori_kp*base_ori[0] + self.ori_kd*base_angvel[0] - self.ori_kp*base_ori[1] - self.ori_kd*base_angvel[1] ]) 
 
         return reqF
+    
+    def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
+        pos_error = np.array(desired_pos)-np.array(self.body_pos[0])
+        vel_error = np.array(desired_vel)-self.body_vel[0:3]
+        target_acc = np.array(desired_acc) + self.Kp*pos_error + self.Kd*vel_error
+        return target_acc
