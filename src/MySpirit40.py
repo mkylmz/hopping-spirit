@@ -32,11 +32,12 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
-        self.Kp = 10
-        self.Kd = 1
+        self.Kp = 100
+        self.Kd = 10
         self.desired_pos = [0,0,0.25]
         self.desired_vel = [0,0,0]
-        self.desired_acc = [0,0,-10]
+        self.desired_acc = [0,0,0]
+        self.friction_coeff = 0.35
 
         self.pos_kp  = 100
         self.pos_kd  = 10
@@ -137,7 +138,7 @@ class MySpirit40:
             self.LEGS[3] : [0,0,0,0,0,0]
         }
 
-        self.SelMat = np.concatenate( (np.zeros((12,6),np.float64), np.ones((12,12),np.float64)), axis=1 )
+        self.SelMat = np.concatenate( (np.zeros((12,6),np.float64), np.eye(12)), axis=1 )
 
         self.inContact = [False,False,False,False]
 
@@ -252,7 +253,7 @@ class MySpirit40:
         ## Initialize PICOS problem
         P = picos.Problem()
         P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-4
+        P.options["*_tol"] = 10e-5
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
@@ -272,6 +273,9 @@ class MySpirit40:
             if self.inContact[leg_i]:
                 J_foot = picos.Constant( "J_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
                 f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
+                P.add_constraint(f_foot[2] >= 0)
+                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
+                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
                 if not first_contact:
                     first_contact = True
                     contact_force = J_foot*f_foot
@@ -287,13 +291,13 @@ class MySpirit40:
         P.add_constraint(abs(torques) <= 12.0)
         
         ## Solve
-        print(P)
-        solution = P.solve()
-        self.target_torques[6:18] = np.array(qdotdot.value)[6:18].reshape(12,)
-        print(torques.value)
-        print(qdotdot.value)
-        pass
-
+        #print(P)
+        try:
+            solution = P.solve()
+            self.target_torques[6:18] = np.array(torques.value).reshape(12,)
+        except ValueError:
+            print("ValueError is given!")
+        
     def handleStance(self,leg_index):
         
         if not self.inContact[leg_index]:
