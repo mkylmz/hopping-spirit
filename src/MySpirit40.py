@@ -3,6 +3,8 @@ import math
 import numpy as np
 from VerticalSLIP import VerticalSLIP as vslip
 import pathlib
+import rbdyn as rbd
+import eigen as e
 
 class MySpirit40:
     """
@@ -13,12 +15,17 @@ class MySpirit40:
 
         self.planeid   = p.loadURDF("plane.urdf")
 
-        self.robotid   = p.loadURDF(str(pathlib.Path(__file__).parent.absolute()) + "/myspirit40.urdf", init_pos)
+        urdf_path      = str(pathlib.Path(__file__).parent.absolute()) + "/myspirit40.urdf"
+        self.robotid   = p.loadURDF(urdf_path, init_pos)
         self.reset_pos = init_pos
         self.reset_ori = [0,0,0,1]
         self.pos       = init_pos
         self.mass      = 11.00
         self.dt        = dt
+
+        self.dyn       = rbd.parsers.from_urdf_file(urdf_path,fixed=False,baseLink="body")
+        self.dyn.mbc.zero(self.dyn.mb)
+        self.dyn.mbc.gravity = e.eigen.Vector3d(0,0,9.81)
 
         #Hardcoded urdf parameters like leg lengths etc.. Could be defined in the robot class later
         self.L1 = 0.206
@@ -193,6 +200,27 @@ class MySpirit40:
         self.body_vel = np.array(body_vel[0] + body_vel[1])
         self.body_acc = (self.body_vel - self.body_vel_old)/self.dt
         self.target_torques[0:6] = self.body_acc
+        self.body_pos = p.getBasePositionAndOrientation(self.robotid)
+        body_pos =  [self.body_pos[1][3]] + list(self.body_pos[1][0:3]) + list(self.body_pos[0])
+        
+    
+        ## update position and oritentation with forward kinematics
+        q = [[] for x in range(17)]
+        q[0] = body_pos
+        for leg_i in range(4):
+            for joint_i in range(3):
+                q[1+leg_i*4+joint_i] = [pos[leg_i*4+joint_i]]
+        self.dyn.mbc.q = q
+        rbd.forwardKinematics(self.dyn.mb,self.dyn.mbc)
+
+        ## update velocity with forward velocity
+        alpha = [[] for x in range(17)]
+        alpha[0] = body_vel[0] + body_vel[1]
+        for leg_i in range(4):
+            for joint_i in range(3):
+                alpha[1+leg_i*4+joint_i] = [vel[leg_i*4+joint_i]]
+        self.dyn.mbc.alpha = alpha
+        rbd.forwardVelocity(self.dyn.mb,self.dyn.mbc)
 
 
     def handleStance(self,leg_index):
