@@ -222,6 +222,11 @@ class MySpirit40:
         self.dyn.mbc.alpha = alpha
         rbd.forwardVelocity(self.dyn.mb,self.dyn.mbc)
 
+        ## Calculate CoM Jacobian and its derivative
+        jac_com = rbd.CoMJacobian(self.dyn.mb)
+        self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
+        self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
+        pass
 
     def handleStance(self,leg_index):
         
