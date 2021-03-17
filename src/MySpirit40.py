@@ -222,11 +222,21 @@ class MySpirit40:
         self.dyn.mbc.alpha = alpha
         rbd.forwardVelocity(self.dyn.mb,self.dyn.mbc)
 
+        ## update acceleration with forward acceleration
+        alphaD = [[] for x in range(17)]
+        alphaD[0] = self.body_acc
+        for leg_i in range(4):
+            for joint_i in range(3):
+                alphaD[1+leg_i*4+joint_i] = [self.target_torques[6+leg_i*3+joint_i]]
+        self.dyn.mbc.alphaD = alphaD
+        rbd.forwardAcceleration(self.dyn.mb,self.dyn.mbc)            
+
         ## Calculate CoM Jacobian and its derivative
         jac_com = rbd.CoMJacobian(self.dyn.mb)
         self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
         self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
         self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
+        
         pass
 
     def handleStance(self,leg_index):
