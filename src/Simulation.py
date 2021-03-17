@@ -12,7 +12,7 @@ class Simulation:
         """
         main initializatio function
         """
-        p.connect(p.GUI)
+        p.connect(p.GUI,options="--width=1920 --height=1080")
         p.setAdditionalSearchPath(pd.getDataPath())
         self.dt = dt
 
