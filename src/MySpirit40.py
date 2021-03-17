@@ -32,11 +32,11 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
-        self.Kp = 100
-        self.Kd = 100
-        self.desired_pos = [0,0,0.20]
+        self.Kp = 10
+        self.Kd = 1
+        self.desired_pos = [0,0,0.25]
         self.desired_vel = [0,0,0]
-        self.desired_acc = [0,0,0]
+        self.desired_acc = [0,0,-10]
 
         self.pos_kp  = 100
         self.pos_kd  = 10
@@ -252,7 +252,7 @@ class MySpirit40:
         ## Initialize PICOS problem
         P = picos.Problem()
         P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-6
+        P.options["*_tol"] = 10e-4
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
@@ -284,14 +284,14 @@ class MySpirit40:
             P.add_constraint(M*qdotdot+N==S*torques+contact_force)
         
         ## Torque constraint
-        P.add_constraint(torques >= -8.0)
-        P.add_constraint(torques <=  8.0)
+        P.add_constraint(abs(torques) <= 12.0)
         
         ## Solve
         print(P)
         solution = P.solve()
-        self.target_torques[6:18] = np.array(torques.value).reshape(12,)
-        print(self.target_torques[6:18])
+        self.target_torques[6:18] = np.array(qdotdot.value)[6:18].reshape(12,)
+        print(torques.value)
+        print(qdotdot.value)
         pass
 
     def handleStance(self,leg_index):
