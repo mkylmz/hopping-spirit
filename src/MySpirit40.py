@@ -5,6 +5,7 @@ from VerticalSLIP import VerticalSLIP as vslip
 import pathlib
 import rbdyn as rbd
 import eigen as e
+import picos
 
 class MySpirit40:
     """
@@ -130,7 +131,7 @@ class MySpirit40:
             self.LEGS[3] : [0,0,0,0,0,0]
         }
 
-        self.SelMat = [np.zeros((12,6),np.float64), np.ones((12,12),np.float64)]
+        self.SelMat = np.concatenate( (np.zeros((12,6),np.float64), np.ones((12,12),np.float64)), axis=1 )
 
         self.inContact = [False,False,False,False]
 
@@ -241,6 +242,24 @@ class MySpirit40:
         self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
         self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
         self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
+
+        ## Initialize PICOS problem
+        P = picos.Problem()
+        P.options.solver = "cvxopt"
+
+        ## Define objective
+        CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
+        qdotdot = picos.RealVariable("qdotdot", (18,1) ) 
+        normal_acc = picos.Constant("normal_acc", self.normal_acc, (3,1))
+        P.set_objective("min", abs(CoM_Jac*qdotdot+normal_acc)**2 )
+
+        ## Define motion constraint
+        M = picos.Constant("M", self.MassMatrix, (18,18) )
+        N = picos.Constant("N", self.NMatrix, (18,1) )
+        S = picos.Constant("S", self.SelMat.T, (18,12))
+        torques = picos.RealVariable("torques", (12,1) ) 
+
+        
         
         pass
 
