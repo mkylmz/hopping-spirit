@@ -2,6 +2,7 @@ import pybullet as p
 import math
 import numpy as np
 from VerticalSLIP import VerticalSLIP as vslip
+import pathlib
 
 class MySpirit40:
     """
@@ -11,7 +12,8 @@ class MySpirit40:
     def __init__(self, init_pos, dt):
 
         self.planeid   = p.loadURDF("plane.urdf")
-        self.robotid   = p.loadURDF("./myspirit40.urdf", init_pos)
+
+        self.robotid   = p.loadURDF(str(pathlib.Path(__file__).parent.absolute()) + "/myspirit40.urdf", init_pos)
         self.reset_pos = init_pos
         self.reset_ori = [0,0,0,1]
         self.pos       = init_pos
