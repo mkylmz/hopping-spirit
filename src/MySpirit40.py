@@ -80,53 +80,6 @@ class MySpirit40:
                                         0, math.pi/4, math.pi/2,
                                         0, math.pi/4, math.pi/2,
                                         0, math.pi/4, math.pi/2]
-        
-        self.joint_pos = {
-            self.LEGS[0] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[1] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[2] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[3] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            }
-        } 
-
-        self.joint_vel = {
-            self.LEGS[0] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[1] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[2] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            },
-            self.LEGS[3] : {
-                self.JOINTS[0] : 0,
-                self.JOINTS[1] : 0,
-                self.JOINTS[2] : 0
-            }
-        }
-
         self.reaction_forces = {
             self.LEGS[0] : [0,0,0,0,0,0],
             self.LEGS[1] : [0,0,0,0,0,0],
@@ -147,13 +100,16 @@ class MySpirit40:
         for i in range(6):
             for j in range(12):
                 self.SMatrix[i][j]
+
+        
+        self.q              = np.array([0.0 for i in range(19)])
+        self.qdot           = np.array([0.0 for i in range(18)])
+        self.qdotdot        = np.array([0.0 for i in range(18)])
+        self.old_qdot       = np.array([0.0 for i in range(18)])
+        self.old_qdotdot    = np.array([0.0 for i in range(18)])
         self.target_torques = np.array([0.0 for i in range(18)])
-        self.qdot = np.array([0.0 for i in range(18)])
-        self.qdotdot = np.array([0.0 for i in range(18)])
-        self.hip_height     = np.array([0.0 for i in range(4)])
-        self.body_vel       = np.array([0.0 for i in range(6)])
-        self.body_vel_old   = np.array([0.0 for i in range(6)])
-        self.body_acc       = np.array([0.0 for i in range(6)])
+
+        self.q_acc = [.0 for i in range(12)] ## Fake acc matrix for pybullet
 
         for leg_i, leg_name in enumerate(self.LEGS):
             for joint_i, joint_name in enumerate(self.JOINTS[:-1]):
@@ -181,41 +137,40 @@ class MySpirit40:
         return False
 
     def fetchState(self):
+        ## Save the old state variables
+        self.old_qdot = self.qdot
+        self.old_qdotdot = self.qdotdot
+
+        ## Get pos and vel from the simulation
         states = p.getJointStates(self.robotid, range(p.getNumJoints(self.robotid)))
         pos = [ele[0] for ele in states]
         vel = [ele[1] for ele in states]
         rf  = [ele[2] for ele in states]
-        self.q_pos = [] 
-        self.q_vel = [] 
-        self.q_acc = [.0 for i in range(12)]
-        for leg_i, leg in enumerate(self.LEGS):
-            for joint_i, joint in enumerate(self.JOINTS[:-1]):
-                self.joint_pos[leg][joint] = pos[leg_i*4+joint_i]
-                self.q_pos.append(pos[leg_i*4+joint_i]) 
-                self.joint_vel[leg][joint] = vel[leg_i*4+joint_i]
-                self.q_vel.append(vel[leg_i*4+joint_i])
-            self.reaction_forces[leg] = rf[leg_i*4+3]
+        
+        for i in range(16):
+            leg_no = int(i/4)
+            if not i%4==3: 
+                self.q[7+i-leg_no]    = pos[i] 
+                self.qdot[6+i-leg_no] = vel[i]
+            else:
+                self.reaction_forces[leg_no] = rf[leg_no*4+3]
+        
+        body_pos = p.getBasePositionAndOrientation(self.robotid)
+        body_vel = p.getBaseVelocity(self.robotid)
+        self.q[0:7]    = np.array( body_pos[0] + body_pos[1] )
+        self.qdot[0:6] = np.array( body_vel[0] + body_vel[1] )
+        self.qdotdot = (self.qdot - self.old_qdot)/self.dt
 
         # Calculate matrices for equations of motion
-        self.MassMatrix = p.calculateMassMatrix(self.robotid, self.q_pos)
-        self.NMatrix = list(p.calculateInverseDynamics(self.robotid, self.q_pos, self.q_vel, self.q_acc, flags=1))
+        self.MassMatrix = p.calculateMassMatrix(self.robotid, list(self.q[7:19]))
+        self.NMatrix = list(p.calculateInverseDynamics(self.robotid, list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc, flags=1))
         del self.NMatrix[6]
         for leg_i, leg in enumerate(self.LEGS):
-            [self.JacT[leg_i], self.JacR[leg_i]] = p.calculateJacobian(self.robotid, self.indices[self.LEGS[leg_i]]["TOE"], [0,0,0],  self.q_pos, self.q_vel, self.q_acc)
-            self.hip_height[leg_i] = p.getLinkState(self.robotid, self.indices[self.LEGS[leg_i]]["HIP"])[0][2]
-        self.body_vel_old = self.body_vel
-        body_vel = p.getBaseVelocity(self.robotid)
-        self.body_vel = np.array(body_vel[0] + body_vel[1])
-        self.body_acc = (self.body_vel - self.body_vel_old)/self.dt
-        self.target_torques[0:6] = self.body_acc
-        self.body_pos = p.getBasePositionAndOrientation(self.robotid)
-        body_pos =  [self.body_pos[1][3]] + list(self.body_pos[1][0:3]) + list(self.body_pos[0])
-        self.qdotdot = self.target_torques
+            [self.JacT[leg_i], self.JacR[leg_i]] = p.calculateJacobian(self.robotid, self.indices[self.LEGS[leg_i]]["TOE"], [0,0,0],  list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc)
         
-    
         ## update position and oritentation with forward kinematics
         q = [[] for x in range(17)]
-        q[0] = body_pos
+        q[0] = [ body_pos[1][3]] + list(body_pos[1][0:3]) + list(body_pos[0])
         for leg_i in range(4):
             for joint_i in range(3):
                 q[1+leg_i*4+joint_i] = [pos[leg_i*4+joint_i]]
@@ -233,10 +188,10 @@ class MySpirit40:
 
         ## update acceleration with forward acceleration
         alphaD = [[] for x in range(17)]
-        alphaD[0] = self.body_acc
+        alphaD[0] = self.qdotdot[0:6]
         for leg_i in range(4):
             for joint_i in range(3):
-                alphaD[1+leg_i*4+joint_i] = [self.target_torques[6+leg_i*3+joint_i]]
+                alphaD[1+leg_i*4+joint_i] = [self.qdotdot[6+leg_i*3+joint_i]]
         self.dyn.mbc.alphaD = alphaD
         rbd.forwardAcceleration(self.dyn.mb,self.dyn.mbc)            
 
@@ -249,7 +204,7 @@ class MySpirit40:
         ## Initialize PICOS problem
         P = picos.Problem()
         P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-6
+        P.options["*_tol"] = 10e-4
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
@@ -374,7 +329,7 @@ class MySpirit40:
         return [L, L_dot, aoa, aoa_dot]
 
     def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
-        pos_error = np.array(desired_pos)-np.array(self.body_pos[0])
-        vel_error = np.array(desired_vel)-self.body_vel[0:3]
+        pos_error = np.array(desired_pos)-self.q[0:3]
+        vel_error = np.array(desired_vel)-self.qdot[0:3]
         target_acc = np.array(desired_acc) + self.Kp*pos_error + self.Kd*vel_error
         return target_acc
