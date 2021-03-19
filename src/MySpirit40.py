@@ -173,16 +173,16 @@ class MySpirit40:
         q[0] = [ body_pos[1][3]] + list(body_pos[1][0:3]) + list(body_pos[0])
         for leg_i in range(4):
             for joint_i in range(3):
-                q[1+leg_i*4+joint_i] = [pos[leg_i*4+joint_i]]
+                q[1+leg_i*4+joint_i] = [self.q[7+leg_i*3+joint_i]]
         self.dyn.mbc.q = q
         rbd.forwardKinematics(self.dyn.mb,self.dyn.mbc)
 
         ## update velocity with forward velocity
         alpha = [[] for x in range(17)]
-        alpha[0] = body_vel[0] + body_vel[1]
+        alpha[0] = self.qdotdot[0:6]
         for leg_i in range(4):
             for joint_i in range(3):
-                alpha[1+leg_i*4+joint_i] = [vel[leg_i*4+joint_i]]
+                alpha[1+leg_i*4+joint_i] = [self.qdot[6+leg_i*3+joint_i]]
         self.dyn.mbc.alpha = alpha
         rbd.forwardVelocity(self.dyn.mb,self.dyn.mbc)
 
@@ -198,7 +198,7 @@ class MySpirit40:
         ## Calculate CoM Jacobian and its derivative
         jac_com = rbd.CoMJacobian(self.dyn.mb)
         self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
-        #self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
+        self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
         self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
 
         ## Initialize PICOS problem
