@@ -199,7 +199,8 @@ class MySpirit40:
         jac_com = rbd.CoMJacobian(self.dyn.mb)
         self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
         self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
-        self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
+        self.normal_acc = self.CoM_Jac_Dot@self.qdot
+        #self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
 
         ## Initialize PICOS problem
         P = picos.Problem()
