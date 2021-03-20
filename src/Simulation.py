@@ -40,6 +40,7 @@ class Simulation:
 
             end = time.time()
             diff = self.dt-(end - start)
+            print(diff)
             if diff > 0:
                 time.sleep(diff)
         pass

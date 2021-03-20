@@ -108,6 +108,7 @@ class MySpirit40:
         self.old_qdot       = np.array([0.0 for i in range(18)])
         self.old_qdotdot    = np.array([0.0 for i in range(18)])
         self.target_torques = np.array([0.0 for i in range(12)])
+        self.force_sel_mat  = np.array([0.0 for i in range(12)])
 
         self.q_acc = [.0 for i in range(12)] ## Fake acc matrix for pybullet
 
@@ -220,29 +221,48 @@ class MySpirit40:
         M = picos.Constant("M", self.MassMatrix, (18,18) )
         N = picos.Constant("N", self.NMatrix, (18,1) )
         S = picos.Constant("S", self.SelMat.T, (18,12))
+        Jt_foot0 = picos.Constant( "Jt_foot0", np.array(self.JacT[0]).T, (18,3) )
+        Jt_foot1 = picos.Constant( "Jt_foot1", np.array(self.JacT[1]).T, (18,3) )
+        Jt_foot2 = picos.Constant( "Jt_foot2", np.array(self.JacT[2]).T, (18,3) )
+        Jt_foot3 = picos.Constant( "Jt_foot3", np.array(self.JacT[3]).T, (18,3) )
         torques = picos.RealVariable("torques", (12,1) )
         torques.value = self.target_torques
-        first_contact = False
+        
+        f_foot0 = picos.RealVariable( "f_foot0", (3,1) )
+        P.add_constraint(f_foot0[2] >= 0)
+        P.add_constraint(f_foot0[2]*self.friction_coeff >= abs(f_foot0[1]))
+        P.add_constraint(f_foot0[2]*self.friction_coeff >= abs(f_foot0[0]))
+
+        f_foot1 = picos.RealVariable( "f_foot1", (3,1) )
+        P.add_constraint(f_foot1[2] >= 0)
+        P.add_constraint(f_foot1[2]*self.friction_coeff >= abs(f_foot1[1]))
+        P.add_constraint(f_foot1[2]*self.friction_coeff >= abs(f_foot1[0]))
+
+        f_foot2 = picos.RealVariable( "f_foot2", (3,1) )
+        P.add_constraint(f_foot2[2] >= 0)
+        P.add_constraint(f_foot2[2]*self.friction_coeff >= abs(f_foot2[1]))
+        P.add_constraint(f_foot2[2]*self.friction_coeff >= abs(f_foot2[0]))
+
+        f_foot3 = picos.RealVariable( "f_foot3", (3,1) )
+        P.add_constraint(f_foot3[2] >= 0)
+        P.add_constraint(f_foot3[2]*self.friction_coeff >= abs(f_foot3[1]))
+        P.add_constraint(f_foot3[2]*self.friction_coeff >= abs(f_foot3[0]))
+
+        contact_force = Jt_foot0*f_foot0 + Jt_foot1*f_foot1 + Jt_foot2*f_foot2 + Jt_foot3*f_foot3
+        P.add_constraint(M*qdotdot+N==S*torques+contact_force)
+        
+        ## Force constraint
         for leg_i in range(4):
             if self.inContact[leg_i]:
-                Jt_foot = picos.Constant( "Jt_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
-                f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
-                P.add_constraint(f_foot[2] >= 0)
-                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
-                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
-                if not first_contact:
-                    first_contact = True
-                    contact_force = Jt_foot*f_foot
-                else:
-                    contact_force = contact_force + Jt_foot*f_foot 
+                self.force_sel_mat[leg_i*3:leg_i*3+3] = np.array([0,0,0])
+            else:
+                self.force_sel_mat[leg_i*3:leg_i*3+3] = np.array([1,1,1])
+        S_f = picos.Constant("S_f", self.force_sel_mat.T, (1,12) )
+        forces = f_foot0 // f_foot1 // f_foot2 // f_foot3
+        P.add_constraint( S_f*forces == 0 )
 
-        if not first_contact:
-            P.add_constraint(M*qdotdot+N==S*torques)
-        else:
-            P.add_constraint(M*qdotdot+N==S*torques+contact_force)
-        
         ## Torque constraint
-        P.add_constraint(abs(torques) <= 20.0)
+        P.add_constraint(abs(torques) <= 10.0)
         
         ## Solve
         #print(P)
