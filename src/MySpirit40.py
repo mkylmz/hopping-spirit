@@ -204,8 +204,8 @@ class MySpirit40:
 
         ## Initialize PICOS problem
         P = picos.Problem()
-        P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-7
+        #P.options.solver = "cvxopt"
+        P.options["*_tol"] = 10e-6
 
         ## Define objective
         CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
@@ -226,16 +226,15 @@ class MySpirit40:
         for leg_i in range(4):
             if self.inContact[leg_i]:
                 Jt_foot = picos.Constant( "Jt_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
-                Jr_foot = picos.Constant( "Jr_foot"+str(leg_i), np.array(self.JacR[leg_i]).T, (18,3) )
                 f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
                 P.add_constraint(f_foot[2] <= 0)
                 P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
                 P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
                 if not first_contact:
                     first_contact = True
-                    contact_force = Jt_foot*f_foot + Jr_foot*f_foot 
+                    contact_force = Jt_foot*f_foot
                 else:
-                    contact_force = contact_force + Jt_foot*f_foot + Jr_foot*f_foot 
+                    contact_force = contact_force + Jt_foot*f_foot 
 
         if not first_contact:
             P.add_constraint(M*qdotdot+N==S*torques)
