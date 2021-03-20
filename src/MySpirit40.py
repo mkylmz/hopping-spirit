@@ -33,7 +33,7 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
-        self.Kp = 100
+        self.Kp = 400
         self.Kd = 2
         self.desired_pos = [0,0,0.30]
         self.desired_vel = [0,0,0]
@@ -227,9 +227,9 @@ class MySpirit40:
             if self.inContact[leg_i]:
                 Jt_foot = picos.Constant( "Jt_foot"+str(leg_i), np.array(self.JacT[leg_i]).T, (18,3) )
                 f_foot = picos.RealVariable( "f_foot"+str(leg_i), (3,1) )
-                P.add_constraint(f_foot[2] <= 0)
-                P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
-                P.add_constraint(-f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
+                P.add_constraint(f_foot[2] >= 0)
+                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[1]))
+                P.add_constraint(f_foot[2]*self.friction_coeff >= abs(f_foot[0]))
                 if not first_contact:
                     first_contact = True
                     contact_force = Jt_foot*f_foot
@@ -277,11 +277,11 @@ class MySpirit40:
         
         if self.inContact[leg_index]:
             self.inContact[leg_index] = False
-
+        
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+1])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+2])
-
+        
 
     def checkNeedRestart(self):
         spaceKey = ord(' ')
