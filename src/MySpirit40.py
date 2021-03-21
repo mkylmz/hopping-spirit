@@ -34,11 +34,11 @@ class MySpirit40:
         self.L2 = 0.206
 
         self.Kp = 400
-        self.Kd = 2
+        self.Kd = 200
         self.desired_pos = [0,0,0.30]
         self.desired_vel = [0,0,0]
         self.desired_acc = [0,0,0]
-        self.friction_coeff = 0.15/math.sqrt(2)
+        self.friction_coeff = 0.60/math.sqrt(2)
 
         #Controller parameters
         self.rest_length = 0.2913 # Desired virtual leg length
