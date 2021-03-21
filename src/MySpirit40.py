@@ -118,7 +118,7 @@ class MySpirit40:
                 p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
             p.enableJointForceTorqueSensor(self.robotid, self.toe_indices[leg_i], True)
         
-        self.myslip = vslip([init_pos[0], init_pos[2], 0, 0, 0, 0], 0, self.rest_length, self.dt)
+        self.myslip = vslip([init_pos[0], init_pos[2], 0, 0, 0, 0], self.aoa, self.rest_length, self.dt)
         self.apex = True
         self.slipsolution = []
 
@@ -267,7 +267,7 @@ class MySpirit40:
     def solve_slip(self):
         
         if not self.apex:
-            if self.qdot[2] >= 0 and self.old_qdot[2] <= 0:
+            if self.qdot[2] <= 0 and self.old_qdot[2] >= 0:
                 self.apex = True
         
         if self.apex:
@@ -275,15 +275,19 @@ class MySpirit40:
             self.myslip.update_state( self.q[0], self.q[2], self.qdot[0], self.qdot[2] )
             self.counter = 0
             self.slipsolution = self.myslip.step_apex_to_apex()
-            self.max_t = len(self.slipsolution.t)
+            self.max_t = len(self.slipsolution.t)-1
     
     def track_tracjectory(self):
         
         ## Get target desired state variables from slip
-        cur_sol = self.slipsolution.y.T[self.counter]
+        try:
+            cur_sol = self.slipsolution.y.T[self.counter]
+        except IndexError:
+            cur_sol = self.slipsolution.y.T[self.max_t]    
         self.desired_pos = [ cur_sol[0], 0, cur_sol[1] ]
         self.desired_vel = [ cur_sol[2], 0, cur_sol[3] ]
-        self.desired_pos = [ 0, 0, 0 ]
+        self.desired_acc = [ 0, 0, 0 ]
+        self.counter += 1
 
         ## Initialize PICOS problem
         P = picos.Problem()
