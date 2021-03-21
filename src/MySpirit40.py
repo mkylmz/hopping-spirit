@@ -96,6 +96,7 @@ class MySpirit40:
         self.NMatrix = []
         self.JacT = [[],[],[],[]]
         self.JacR = [[],[],[],[]]
+        self.JacTDot = [[],[],[],[]]
         self.SMatrix = [[0 for i in range(18)]]*6
         for i in range(6):
             for j in range(12):
@@ -109,6 +110,7 @@ class MySpirit40:
         self.old_qdotdot    = np.array([0.0 for i in range(18)])
         self.target_torques = np.array([0.0 for i in range(12)])
         self.force_sel_mat  = np.array([0.0 for i in range(12)])
+        self.target_acc     = np.array([0.0 for i in range(15)])
 
         self.q_acc = [.0 for i in range(12)] ## Fake acc matrix for pybullet
 
@@ -118,6 +120,13 @@ class MySpirit40:
                 p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
             p.enableJointForceTorqueSensor(self.robotid, self.toe_indices[leg_i], True)
         
+
+        for leg_i, leg in enumerate(self.LEGS):
+            jt, jr = p.calculateJacobian(self.robotid, self.indices[self.LEGS[leg_i]]["TOE"], [0,0,0],  list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc)
+            self.JacTDot[leg_i] = np.array(jt)/self.dt
+            self.JacT[leg_i] = np.array(jt)
+            self.JacR[leg_i] = np.array(jr)
+
         self.myslip = vslip([init_pos[0], init_pos[2], 0, 0, 0, 0], self.aoa, self.rest_length, self.dt)
         self.apex = True
         self.slipsolution = []
@@ -171,8 +180,11 @@ class MySpirit40:
         self.NMatrix = list(p.calculateInverseDynamics(self.robotid, list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc, flags=1))
         del self.NMatrix[6]
         for leg_i, leg in enumerate(self.LEGS):
-            [self.JacT[leg_i], self.JacR[leg_i]] = p.calculateJacobian(self.robotid, self.indices[self.LEGS[leg_i]]["TOE"], [0,0,0],  list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc)
-        
+            jt, jr = p.calculateJacobian(self.robotid, self.indices[self.LEGS[leg_i]]["TOE"], [0,0,0],  list(self.q[7:19]), list(self.qdot[6:18]), self.q_acc)
+            self.JacTDot[leg_i] = (np.array(jt) - self.JacT[leg_i])/self.dt
+            self.JacT[leg_i] = np.array(jt)
+            self.JacR[leg_i] = np.array(jr)
+         
         ## update position and oritentation with forward kinematics
         q = [[] for x in range(17)]
         q[0] = [ body_pos[1][3]] + list(body_pos[1][0:3]) + list(body_pos[0])
@@ -293,15 +305,8 @@ class MySpirit40:
         P = picos.Problem()
         #P.options.solver = "cvxopt"
         P.options["*_tol"] = 10e-6
-
-        ## Define objective
-        CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
         qdotdot = picos.RealVariable("qdotdot", (18,1) ) 
         qdotdot.value = self.qdotdot
-        normal_acc = picos.Constant("normal_acc", self.normal_acc, (3,1))
-        self.target_acc = self.calcTargetAcc(self.desired_pos, self.desired_vel, self.desired_acc) 
-        target_acc = picos.Constant("target_acc", self.target_acc.T, (3,1))
-        P.set_objective("min", abs(CoM_Jac*qdotdot+normal_acc-target_acc)**2 )
 
         ## Define motion constraint
         M = picos.Constant("M", self.MassMatrix, (18,18) )
@@ -349,6 +354,19 @@ class MySpirit40:
 
         ## Torque constraint
         P.add_constraint(abs(torques) <= 10.0)
+
+        ## Define objective
+        CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
+        body_normal_acc = picos.Constant("normal_acc", self.normal_acc, (3,1))
+        self.target_acc[0:3] = self.calcTargetAcc(self.desired_pos, self.desired_vel, self.desired_acc) 
+        target_acc = picos.Constant("target_acc", self.target_acc.T, (15,1))
+        J = CoM_Jac // Jt_foot0.T // Jt_foot1.T // Jt_foot2.T // Jt_foot3.T
+        normal_acc_foot0 = self.JacTDot[0] @ self.qdot
+        normal_acc_foot1 = self.JacTDot[1] @ self.qdot
+        normal_acc_foot2 = self.JacTDot[2] @ self.qdot
+        normal_acc_foot3 = self.JacTDot[3] @ self.qdot
+        normal_acc = body_normal_acc // normal_acc_foot0 // normal_acc_foot1 // normal_acc_foot2 // normal_acc_foot3
+        P.set_objective("min", abs(J*qdotdot+normal_acc-target_acc)**2 )
         
         ## Solve
         #print(P)

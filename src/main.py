@@ -1,6 +1,6 @@
 from Simulation import Simulation
 
-init_pos = [0,0,0.35]
+init_pos = [0,0,0.50]
 init_ori = [0,0,0]
 
 my_sim = Simulation(1./200,init_pos)
