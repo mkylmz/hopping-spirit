@@ -33,8 +33,8 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
-        self.Kp = 400
-        self.Kd = 200
+        self.Kp = 4000
+        self.Kd = 2000
         self.desired_pos = [0,0,0.30]
         self.desired_vel = [0,0,0]
         self.desired_acc = [0,0,0]
@@ -349,8 +349,9 @@ class MySpirit40:
         ## Solve
         #print(P)
         try:
-            solution = P.solve()
-            self.target_torques[0:12] = np.array(torques.value).reshape(12,)
+            if any(self.inContact):
+                solution = P.solve()
+                self.target_torques[0:12] = np.array(torques.value).reshape(12,)
         except ValueError:
             print("ValueError is given at " + str(time.time()) + " !")
         except picos.modeling.problem.SolutionFailure:
