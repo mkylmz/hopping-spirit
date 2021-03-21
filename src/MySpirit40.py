@@ -33,8 +33,8 @@ class MySpirit40:
         self.L1 = 0.206
         self.L2 = 0.206
 
-        self.Kp = 4000
-        self.Kd = 2000
+        self.Kp = 40
+        self.Kd = 2
         self.desired_pos = [0,0,0.30]
         self.desired_vel = [0,0,0]
         self.desired_acc = [0,0,0]
