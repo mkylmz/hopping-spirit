@@ -218,5 +218,7 @@ class VerticalSLIP():
         sol.failed = (len(sol.t_events) != 0)
         return sol
 
-    def update_state(self, state):
-        self.state = state
+    def update_state(self, x, y, xdot, ydot):
+        self.state      = [ x, y, xdot, ydot, 
+                            x+np.sin(self.aoa)*self.r_length, 
+                            y-np.cos(self.aoa)*self.r_length]

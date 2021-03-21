@@ -118,11 +118,15 @@ class MySpirit40:
                 p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
             p.enableJointForceTorqueSensor(self.robotid, self.toe_indices[leg_i], True)
         
-    
+        self.myslip = vslip([init_pos[0], init_pos[2], 0, 0, 0, 0], 0, self.rest_length, self.dt)
+        self.apex = True
+        self.slipsolution = []
 
     def control(self):
         
         self.fetchState()
+        self.solve_slip()
+        self.track_tracjectory()
 
         for leg_i, leg in enumerate(self.LEGS):
             if ( self.checkContact(leg) ):
@@ -203,6 +207,84 @@ class MySpirit40:
         self.normal_acc = self.CoM_Jac_Dot@self.qdot
         #self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
 
+    def handleStance(self,leg_index):
+        
+        if not self.inContact[leg_index]:
+            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, 0, force=0)
+            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, 0, force=0)
+            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, 0, force=0)            
+            self.inContact[leg_index] = True
+
+        min_i = leg_index*3
+        max_i = leg_index*3+3
+        [T_Hip_Torq, T_Upper_Torq, T_Lower_Torq] = self.target_torques[min_i:max_i]
+
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.TORQUE_CONTROL, force=T_Hip_Torq)
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.TORQUE_CONTROL, force=T_Upper_Torq) 
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.TORQUE_CONTROL, force=T_Lower_Torq)
+
+        pass
+
+    def handleFlight(self,leg_index):
+        
+        
+        if self.inContact[leg_index]:
+            self.inContact[leg_index] = False
+        
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3])
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+1])
+        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+2])
+        
+
+    def checkNeedRestart(self):
+        spaceKey = ord(' ')
+        keys = p.getKeyboardEvents()
+        if spaceKey in keys and keys[spaceKey]&p.KEY_WAS_TRIGGERED:
+            p.resetBasePositionAndOrientation(self.robotid, self.reset_pos, self.reset_ori)
+            for leg_i, leg_name in enumerate(self.LEGS):
+                for joint_i, joint_name in enumerate(self.JOINTS[:-1]):
+                    p.resetJointState(self.robotid, self.indices[leg_name][joint_name], self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i])
+                    p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
+
+    def slip2polar(self,slip_state):
+        L       =   math.sqrt(  (slip_state[0]-slip_state[4])**2 + \
+                                (slip_state[1]-slip_state[5])**2 )
+        aoa     =  np.arctan2(  (slip_state[0]-slip_state[4]), \
+                                (slip_state[1]-slip_state[5]) )
+        L_dot   =   math.cos( aoa ) * slip_state[3] + \
+                    math.cos( np.pi/2 - aoa ) * slip_state[2]
+        aoa_dot =  -math.sin( aoa ) * slip_state[3] + \
+                    math.cos( aoa ) * slip_state[2]
+        return [L, L_dot, aoa, aoa_dot]
+
+    def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
+        pos_error = np.array(desired_pos)-self.q[0:3]
+        vel_error = np.array(desired_vel)-self.qdot[0:3]
+        target_acc = np.array(desired_acc) + self.Kp*pos_error + self.Kd*vel_error
+        return target_acc
+
+
+    def solve_slip(self):
+        
+        if not self.apex:
+            if self.qdot[2] >= 0 and self.old_qdot[2] <= 0:
+                self.apex = True
+        
+        if self.apex:
+            self.apex = False
+            self.myslip.update_state( self.q[0], self.q[2], self.qdot[0], self.qdot[2] )
+            self.counter = 0
+            self.slipsolution = self.myslip.step_apex_to_apex()
+            self.max_t = len(self.slipsolution.t)
+    
+    def track_tracjectory(self):
+        
+        ## Get target desired state variables from slip
+        cur_sol = self.slipsolution.y.T[self.counter]
+        self.desired_pos = [ cur_sol[0], 0, cur_sol[1] ]
+        self.desired_vel = [ cur_sol[2], 0, cur_sol[3] ]
+        self.desired_pos = [ 0, 0, 0 ]
+
         ## Initialize PICOS problem
         P = picos.Problem()
         #P.options.solver = "cvxopt"
@@ -274,75 +356,3 @@ class MySpirit40:
         except picos.modeling.problem.SolutionFailure:
             print("Solution not found at  " + str(time.time()) + " !")
         
-    def handleStance(self,leg_index):
-        
-        if not self.inContact[leg_index]:
-            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, 0, force=0)
-            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, 0, force=0)
-            p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, 0, force=0)            
-            self.inContact[leg_index] = True
-
-        min_i = leg_index*3
-        max_i = leg_index*3+3
-        [T_Hip_Torq, T_Upper_Torq, T_Lower_Torq] = self.target_torques[min_i:max_i]
-
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.TORQUE_CONTROL, force=T_Hip_Torq)
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.TORQUE_CONTROL, force=T_Upper_Torq) 
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.TORQUE_CONTROL, force=T_Lower_Torq)
-
-        pass
-
-    def handleFlight(self,leg_index):
-        
-        
-        if self.inContact[leg_index]:
-            self.inContact[leg_index] = False
-        
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3])
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+1])
-        p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+2])
-        
-
-    def checkNeedRestart(self):
-        spaceKey = ord(' ')
-        keys = p.getKeyboardEvents()
-        if spaceKey in keys and keys[spaceKey]&p.KEY_WAS_TRIGGERED:
-            p.resetBasePositionAndOrientation(self.robotid, self.reset_pos, self.reset_ori)
-            for leg_i, leg_name in enumerate(self.LEGS):
-                for joint_i, joint_name in enumerate(self.JOINTS[:-1]):
-                    p.resetJointState(self.robotid, self.indices[leg_name][joint_name], self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i])
-                    p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
-            
-    
-    def calc_slip_state(self, leg_index):
-        Lstate = p.getLinkState(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], 1, 1)
-
-        x = Lstate[0][0]
-        y = Lstate[0][2]
-
-        xdot = Lstate[6][0]
-        ydot = Lstate[6][2]
-
-        Lstate = p.getLinkState(self.robotid, self.indices[self.LEGS[leg_index]]["TOE"], 0, 1)
-
-        toe_x = Lstate[0][0]
-        toe_y = Lstate[0][2]
-
-        return [x, y, xdot, ydot, toe_x, toe_y]
-
-    def slip2polar(self,slip_state):
-        L       =   math.sqrt(  (slip_state[0]-slip_state[4])**2 + \
-                                (slip_state[1]-slip_state[5])**2 )
-        aoa     =  np.arctan2(  (slip_state[0]-slip_state[4]), \
-                                (slip_state[1]-slip_state[5]) )
-        L_dot   =   math.cos( aoa ) * slip_state[3] + \
-                    math.cos( np.pi/2 - aoa ) * slip_state[2]
-        aoa_dot =  -math.sin( aoa ) * slip_state[3] + \
-                    math.cos( aoa ) * slip_state[2]
-        return [L, L_dot, aoa, aoa_dot]
-
-    def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
-        pos_error = np.array(desired_pos)-self.q[0:3]
-        vel_error = np.array(desired_vel)-self.qdot[0:3]
-        target_acc = np.array(desired_acc) + self.Kp*pos_error + self.Kd*vel_error
-        return target_acc
