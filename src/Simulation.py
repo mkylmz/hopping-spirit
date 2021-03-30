@@ -40,8 +40,10 @@ class Simulation:
 
             end = time.time()
             diff = self.dt-(end - start)
-            print(diff)
-            if diff > 0:
+            if diff < 0:
+                diff *= 1000
+                print('Extra time taken than period: %5.1f ms.' % diff )
+            else:
                 time.sleep(diff)
         pass
 
