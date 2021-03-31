@@ -22,10 +22,6 @@ class robot_module:
         self.mass      = 11.00
         self.dt        = dt
 
-        self.dyn       = rbd.parsers.from_urdf_file(urdf_path,fixed=False,baseLink="body")
-        self.dyn.mbc.zero(self.dyn.mb)
-        self.dyn.mbc.gravity = e.eigen.Vector3d(0,0,-9.8)
-
         #Hardcoded urdf parameters like leg lengths etc.. Could be defined in the robot class later
         self.L1 = 0.206
         self.L2 = 0.206
