@@ -3,9 +3,6 @@ import math
 import numpy as np
 from slip2d import slip2d
 import pathlib
-import rbdyn as rbd
-import eigen as e
-import picos
 import time
 
 class robot_module:
@@ -184,40 +181,6 @@ class robot_module:
             self.JacTDot[leg_i] = (np.array(jt) - self.JacT[leg_i])/self.dt
             self.JacT[leg_i] = np.array(jt)
             self.JacR[leg_i] = np.array(jr)
-         
-        ## update position and oritentation with forward kinematics
-        q = [[] for x in range(17)]
-        q[0] = [ body_pos[1][3]] + list(body_pos[1][0:3]) + list(body_pos[0])
-        for leg_i in range(4):
-            for joint_i in range(3):
-                q[1+leg_i*4+joint_i] = [self.q[7+leg_i*3+joint_i]]
-        self.dyn.mbc.q = q
-        rbd.forwardKinematics(self.dyn.mb,self.dyn.mbc)
-
-        ## update velocity with forward velocity
-        alpha = [[] for x in range(17)]
-        alpha[0] = self.qdotdot[0:6]
-        for leg_i in range(4):
-            for joint_i in range(3):
-                alpha[1+leg_i*4+joint_i] = [self.qdot[6+leg_i*3+joint_i]]
-        self.dyn.mbc.alpha = alpha
-        rbd.forwardVelocity(self.dyn.mb,self.dyn.mbc)
-
-        ## update acceleration with forward acceleration
-        alphaD = [[] for x in range(17)]
-        alphaD[0] = self.qdotdot[0:6]
-        for leg_i in range(4):
-            for joint_i in range(3):
-                alphaD[1+leg_i*4+joint_i] = [self.qdotdot[6+leg_i*3+joint_i]]
-        self.dyn.mbc.alphaD = alphaD
-        rbd.forwardAcceleration(self.dyn.mb,self.dyn.mbc)            
-
-        ## Calculate CoM Jacobian and its derivative
-        jac_com = rbd.CoMJacobian(self.dyn.mb)
-        self.CoM_Jac = np.array(jac_com.jacobian(self.dyn.mb, self.dyn.mbc))
-        self.CoM_Jac_Dot = np.array(jac_com.jacobianDot(self.dyn.mb, self.dyn.mbc))
-        self.normal_acc = self.CoM_Jac_Dot@self.qdot
-        #self.normal_acc = np.array(jac_com.normalAcceleration(self.dyn.mb, self.dyn.mbc)) # J_dot*q_dot
 
     def handleStance(self,leg_index):
         
@@ -242,11 +205,11 @@ class robot_module:
         
         if self.inContact[leg_index]:
             self.inContact[leg_index] = False
-        
+        """
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+1])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+2])
-        
+        """
 
     def checkNeedRestart(self):
         spaceKey = ord(' ')
@@ -257,17 +220,6 @@ class robot_module:
                 for joint_i, joint_name in enumerate(self.JOINTS[:-1]):
                     p.resetJointState(self.robotid, self.indices[leg_name][joint_name], self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i])
                     p.setJointMotorControl2(self.robotid, self.indices[leg_name][joint_name], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_i*3+joint_i], force=0)
-
-    def slip2polar(self,slip_state):
-        L       =   math.sqrt(  (slip_state[0]-slip_state[4])**2 + \
-                                (slip_state[1]-slip_state[5])**2 )
-        aoa     =  np.arctan2(  (slip_state[0]-slip_state[4]), \
-                                (slip_state[1]-slip_state[5]) )
-        L_dot   =   math.cos( aoa ) * slip_state[3] + \
-                    math.cos( np.pi/2 - aoa ) * slip_state[2]
-        aoa_dot =  -math.sin( aoa ) * slip_state[3] + \
-                    math.cos( aoa ) * slip_state[2]
-        return [L, L_dot, aoa, aoa_dot]
 
     def calcTargetAcc(self, desired_pos, desired_vel, desired_acc):
         pos_error = np.array(desired_pos)-self.q[0:3]
@@ -301,81 +253,5 @@ class robot_module:
         self.desired_acc = [ 0, 0, 0 ]
         self.counter += 1
 
-        ## Initialize PICOS problem
-        P = picos.Problem()
-        #P.options.solver = "cvxopt"
-        P.options["*_tol"] = 10e-6
-        qdotdot = picos.RealVariable("qdotdot", (18,1) ) 
-        qdotdot.value = self.qdotdot
-
-        ## Define motion constraint
-        M = picos.Constant("M", self.MassMatrix, (18,18) )
-        N = picos.Constant("N", self.NMatrix, (18,1) )
-        S = picos.Constant("S", self.SelMat.T, (18,12))
-        Jt_foot0 = picos.Constant( "Jt_foot0", np.array(self.JacT[0]).T, (18,3) )
-        Jt_foot1 = picos.Constant( "Jt_foot1", np.array(self.JacT[1]).T, (18,3) )
-        Jt_foot2 = picos.Constant( "Jt_foot2", np.array(self.JacT[2]).T, (18,3) )
-        Jt_foot3 = picos.Constant( "Jt_foot3", np.array(self.JacT[3]).T, (18,3) )
-        torques = picos.RealVariable("torques", (12,1) )
-        torques.value = self.target_torques
         
-        f_foot0 = picos.RealVariable( "f_foot0", (3,1) )
-        P.add_constraint(f_foot0[2] >= 0)
-        P.add_constraint(f_foot0[2]*self.friction_coeff >= abs(f_foot0[1]))
-        P.add_constraint(f_foot0[2]*self.friction_coeff >= abs(f_foot0[0]))
-
-        f_foot1 = picos.RealVariable( "f_foot1", (3,1) )
-        P.add_constraint(f_foot1[2] >= 0)
-        P.add_constraint(f_foot1[2]*self.friction_coeff >= abs(f_foot1[1]))
-        P.add_constraint(f_foot1[2]*self.friction_coeff >= abs(f_foot1[0]))
-
-        f_foot2 = picos.RealVariable( "f_foot2", (3,1) )
-        P.add_constraint(f_foot2[2] >= 0)
-        P.add_constraint(f_foot2[2]*self.friction_coeff >= abs(f_foot2[1]))
-        P.add_constraint(f_foot2[2]*self.friction_coeff >= abs(f_foot2[0]))
-
-        f_foot3 = picos.RealVariable( "f_foot3", (3,1) )
-        P.add_constraint(f_foot3[2] >= 0)
-        P.add_constraint(f_foot3[2]*self.friction_coeff >= abs(f_foot3[1]))
-        P.add_constraint(f_foot3[2]*self.friction_coeff >= abs(f_foot3[0]))
-
-        contact_force = Jt_foot0*f_foot0 + Jt_foot1*f_foot1 + Jt_foot2*f_foot2 + Jt_foot3*f_foot3
-        P.add_constraint(M*qdotdot+N==S*torques+contact_force)
-        
-        ## Force constraint
-        for leg_i in range(4):
-            if self.inContact[leg_i]:
-                self.force_sel_mat[leg_i*3:leg_i*3+3] = np.array([0,0,0])
-            else:
-                self.force_sel_mat[leg_i*3:leg_i*3+3] = np.array([1,1,1])
-        S_f = picos.Constant("S_f", self.force_sel_mat.T, (1,12) )
-        forces = f_foot0 // f_foot1 // f_foot2 // f_foot3
-        P.add_constraint( S_f*forces == 0 )
-
-        ## Torque constraint
-        P.add_constraint(abs(torques) <= 10.0)
-
-        ## Define objective
-        CoM_Jac = picos.Constant("J", self.CoM_Jac, (3,18) )
-        body_normal_acc = picos.Constant("normal_acc", self.normal_acc, (3,1))
-        self.target_acc[0:3] = self.calcTargetAcc(self.desired_pos, self.desired_vel, self.desired_acc) 
-        target_acc = picos.Constant("target_acc", self.target_acc.T, (15,1))
-        J = CoM_Jac // Jt_foot0.T // Jt_foot1.T // Jt_foot2.T // Jt_foot3.T
-        normal_acc_foot0 = self.JacTDot[0] @ self.qdot
-        normal_acc_foot1 = self.JacTDot[1] @ self.qdot
-        normal_acc_foot2 = self.JacTDot[2] @ self.qdot
-        normal_acc_foot3 = self.JacTDot[3] @ self.qdot
-        normal_acc = body_normal_acc // normal_acc_foot0 // normal_acc_foot1 // normal_acc_foot2 // normal_acc_foot3
-        P.set_objective("min", abs(J*qdotdot+normal_acc-target_acc)**2 )
-        
-        ## Solve
-        #print(P)
-        try:
-            if any(self.inContact):
-                solution = P.solve()
-                self.target_torques[0:12] = np.array(torques.value).reshape(12,)
-        except ValueError:
-            print("ValueError is given at " + str(time.time()) + " !")
-        except picos.modeling.problem.SolutionFailure:
-            print("Solution not found at  " + str(time.time()) + " !")
         
