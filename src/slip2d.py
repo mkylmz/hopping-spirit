@@ -2,7 +2,7 @@ import numpy as np
 import math
 import scipy.integrate as integrate
 
-class VerticalSLIP():
+class slip2d():
     """
     Vertical SLIP class for simple integration
     """

@@ -1,14 +1,14 @@
 import pybullet as p
 import math
 import numpy as np
-from VerticalSLIP import VerticalSLIP as vslip
+from slip2d import slip2d
 import pathlib
 import rbdyn as rbd
 import eigen as e
 import picos
 import time
 
-class MySpirit40:
+class robot_module:
     """
     robot class
     """
@@ -127,7 +127,7 @@ class MySpirit40:
             self.JacT[leg_i] = np.array(jt)
             self.JacR[leg_i] = np.array(jr)
 
-        self.myslip = vslip([init_pos[0], init_pos[2], 0, 0, 0, 0], self.aoa, self.rest_length, self.dt)
+        self.myslip = slip2d([init_pos[0], init_pos[2], 0, 0, 0, 0], self.aoa, self.rest_length, self.dt)
         self.apex = True
         self.slipsolution = []
 

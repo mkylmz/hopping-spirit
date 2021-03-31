@@ -1,9 +1,9 @@
 import pybullet as p
 import pybullet_data as pd
 import time
-from MySpirit40 import MySpirit40 as myrobot
+from robot_module import robot_module as myrobot
 
-class Simulation:
+class sim_module:
     """
     my simulation class for pybullet
     """
