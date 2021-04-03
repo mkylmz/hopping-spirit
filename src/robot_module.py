@@ -5,7 +5,7 @@ from convex_MPC import convex_MPC
 from slip2d import slip2d
 import pathlib
 import time
-from utils import euler2quat
+from utils import quat2euler
 from convex_MPC import convex_MPC
 
 class robot_module:
@@ -254,7 +254,7 @@ class robot_module:
         self.desired_acc = [ 0, 0, 0 ]
         self.counter += 1
 
-        ori_eul = euler2quat(self.q[3:7])
+        ori_eul = quat2euler(self.q[3:7])
         pos = self.q[0:3]
         ang_vel = self.qdot[3:6]
         lin_vel = self.qdot[0:3]

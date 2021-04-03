@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-def euler2quat(quat):
+def     quat2euler(quat):
         """
         Convert a quaternion into euler angles (roll, pitch, yaw)
         roll is rotation around x in radians (counterclockwise)
