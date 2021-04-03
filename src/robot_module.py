@@ -1,9 +1,12 @@
 import pybullet as p
 import math
 import numpy as np
+from convex_MPC import convex_MPC
 from slip2d import slip2d
 import pathlib
 import time
+from utils import euler2quat
+from convex_MPC import convex_MPC
 
 class robot_module:
     """
@@ -123,6 +126,8 @@ class robot_module:
         self.myslip = slip2d([init_pos[0], init_pos[2], 0, 0, 0, 0], self.aoa, self.rest_length, self.dt)
         self.apex = True
         self.slipsolution = []
+
+        self.convMPC = convex_MPC(10)
 
     def control(self):
         
@@ -249,5 +254,13 @@ class robot_module:
         self.desired_acc = [ 0, 0, 0 ]
         self.counter += 1
 
-        
+        ori_eul = euler2quat(self.q[3:7])
+        pos = self.q[0:3]
+        ang_vel = self.qdot[3:6]
+        lin_vel = self.qdot[0:3]
+        X0 = np.array([ 0,          0,          ori_eul[2],
+                        pos[0],     pos[1],     pos[2],
+                        ang_vel[0], ang_vel[1], ang_vel[2],
+                        lin_vel[0], lin_vel[1], lin_vel[2],
+                        -9.80665 ] ).reshape(13,1) 
         
