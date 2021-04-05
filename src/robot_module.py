@@ -127,7 +127,7 @@ class robot_module:
         self.apex = True
         self.slipsolution = []
 
-        self.convMPC = convex_MPC(10)
+        self.convMPC = convex_MPC()
 
     def control(self):
         
@@ -263,4 +263,6 @@ class robot_module:
                         ang_vel[0], ang_vel[1], ang_vel[2],
                         lin_vel[0], lin_vel[1], lin_vel[2],
                         -9.80665 ] ).reshape(13,1) 
+
+        self.convMPC.update_desired_vars(0.29,)
         
