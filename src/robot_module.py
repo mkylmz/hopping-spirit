@@ -267,5 +267,12 @@ class robot_module:
         desired_vel = -self.Kp*np.array( [  self.q[0], self.q[1] ] ) 
         desired_ang_vel = -self.Kp*ori_eul[2] 
         self.convMPC.update_desired_vars(0.29,desired_vel,desired_ang_vel,self.inContact)
-        self.convMPC.update_state_vars(ori_eul,ang_vel,)
+        self.convMPC.update_state_vars(ori_eul,ang_vel,lin_vel,self.foot_pos_in_base())
+        action,forces = self.convMPC.calc_torques()
+    
+    def foot_pos_in_base(self):
+        foot_poses = np.array([],dtype=np.float64)
+
+
+        return foot_poses
         
