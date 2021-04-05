@@ -1,6 +1,7 @@
 import numpy as np
 import quadprog
 import mpc_osqp as convex_mpc
+from scipy.integrate._ivp import base
 
 class convex_MPC:
   """
@@ -59,7 +60,13 @@ class convex_MPC:
     self._desired_speed = desired_vel
     self._desired_twisting_speed = desired_ang_vel
     self._foot_contacts = np.array(foot_contacts).astype(int)
-  
+
+  def update_state_vars(self, base_rpy, base_rpy_rate, com_velocity_body_frame, foot_pos_in_base_frame ):
+    self._base_rpy = base_rpy
+    self._base_rpy_rate = base_rpy_rate
+    self._com_velocity_body_frame = com_velocity_body_frame 
+    self._foot_pos_in_base_frame = foot_pos_in_base_frame
+    
   def calc_torques(self):
     """Computes the torque for stance legs."""
     desired_com_position = np.array( (0., 0., self._desired_body_height), dtype=np.float64)
@@ -69,26 +76,22 @@ class convex_MPC:
     foot_contact_state = self._foot_contacts
 
     # We use the body yaw aligned world frame for MPC computation.
-    com_roll_pitch_yaw = np.array(self._robot.GetBaseRollPitchYaw(),
-                                  dtype=np.float64)
+    com_roll_pitch_yaw = np.array(self._base_rpy,dtype=np.float64)
     com_roll_pitch_yaw[2] = 0
 
-    #predicted_contact_forces=[0]*self._num_legs*_FORCE_DIMENSION
+    #predicted_contact_forces=[0]*self._num_legs*self._FORCE_DIMENSION
     # print("Com Vel: {}".format(self._state_estimator.com_velocity_body_frame))
     # print("Com RPY: {}".format(self._robot.GetBaseRollPitchYawRate()))
     # print("Com RPY Rate: {}".format(self._robot.GetBaseRollPitchYawRate()))
     predicted_contact_forces = self._cpp_mpc.compute_contact_forces(
         [0],  #com_position
-        np.asarray(self._state_estimator.com_velocity_body_frame,
-                   dtype=np.float64),  #com_velocity
+        np.asarray(self._com_velocity_body_frame, dtype=np.float64),  #com_velocity
         np.array(com_roll_pitch_yaw, dtype=np.float64),  #com_roll_pitch_yaw
         # Angular velocity in the yaw aligned world frame is actually different
         # from rpy rate. We use it here as a simple approximation.
-        np.asarray(self._robot.GetBaseRollPitchYawRate(),
-                   dtype=np.float64),  #com_angular_velocity
+        np.asarray(self._base_rpy_rate, dtype=np.float64),  #com_angular_velocity
         foot_contact_state,  #foot_contact_states
-        np.array(self._robot.GetFootPositionsInBaseFrame().flatten(),
-                 dtype=np.float64),  #foot_positions_base_frame
+        np.array(self._foot_pos_in_base_frame, dtype=np.float64),  #foot_positions_base_frame
         self._friction_coeffs,  #foot_friction_coeffs
         desired_com_position,  #desired_com_position
         desired_com_velocity,  #desired_com_velocity
