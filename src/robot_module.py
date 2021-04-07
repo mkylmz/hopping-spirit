@@ -271,8 +271,15 @@ class robot_module:
         action,forces = self.convMPC.calc_torques()
     
     def foot_pos_in_base(self):
-        foot_poses = np.array([],dtype=np.float64)
+        foot_poses = []
+        base_position, base_orientation = p.getBasePositionAndOrientation(self.robotid)
+        inverse_translation, inverse_rotation = p.invertTransform( base_position, base_orientation )
+        
+        for leg_i, leg in enumerate(self.LEGS):
+            link_state = p.getLinkState(self.robotid, self.indices[leg]["TOE"])
+            link_position = link_state[0]
+            link_local_position, _ = p.multiplyTransforms(inverse_translation, inverse_rotation, link_position, (0, 0, 0, 1))
+            foot_poses.append(link_local_position)
 
-
-        return foot_poses
+        return np.array(foot_poses).flatten()
         
