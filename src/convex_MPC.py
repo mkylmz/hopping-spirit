@@ -36,6 +36,7 @@ class convex_MPC:
     self._FORCE_DIMENSION = 3
     self._PLANNING_HORIZON_STEPS = 10
     self._PLANNING_TIMESTEP = 0.025
+    # (roll_pitch_yaw, position, angular_velocity, velocity, gravity_place_holder)
     self._MPC_WEIGHTS = [5, 5, 0.2, 0, 0, 10, 0., 0., 1., 1., 1., 0., 0]
     self._qp_solver = convex_mpc.QPOASES
 

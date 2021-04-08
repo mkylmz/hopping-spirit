@@ -206,11 +206,11 @@ class robot_module:
         
         if self.inContact[leg_index]:
             self.inContact[leg_index] = False
-        """
+        
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["HIP"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["UPPER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+1])
         p.setJointMotorControl2(self.robotid, self.indices[self.LEGS[leg_index]]["LOWER"], p.POSITION_CONTROL, self.INITIAL_JOINT_POSITIONS[leg_index*3+2])
-        """
+        
 
     def checkNeedRestart(self):
         spaceKey = ord(' ')
@@ -264,9 +264,9 @@ class robot_module:
                         lin_vel[0], lin_vel[1], lin_vel[2],
                         -9.80665 ] ).reshape(13,1) 
 
-        desired_vel = -self.Kp*np.array( [  self.q[0], self.q[1] ] ) 
+        desired_vel = -self.Kp*np.array( [  self.q[0]-self.desired_pos[0], self.q[1] ] ) + np.array( [ self.desired_vel[0],self.desired_vel[1] ] )
         desired_ang_vel = -self.Kp*ori_eul[2] 
-        self.convMPC.update_desired_vars(0.29,desired_vel,desired_ang_vel,self.inContact)
+        self.convMPC.update_desired_vars(self.desired_pos[2],desired_vel,desired_ang_vel,self.inContact)
         self.convMPC.update_state_vars(ori_eul,ang_vel,lin_vel,self.foot_pos_in_base(),self.JacT)
         motor_torques,forces = self.convMPC.calc_torques()
         self.target_torques = np.array(motor_torques)
