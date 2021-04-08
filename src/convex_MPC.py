@@ -61,11 +61,12 @@ class convex_MPC:
     self._desired_twisting_speed = desired_ang_vel
     self._foot_contacts = np.array(foot_contacts).astype(int)
 
-  def update_state_vars(self, base_rpy, base_rpy_rate, com_velocity_body_frame, foot_pos_in_base_frame ):
+  def update_state_vars(self, base_rpy, base_rpy_rate, com_velocity_body_frame, foot_pos_in_base_frame, jacobians ):
     self._base_rpy = base_rpy
     self._base_rpy_rate = base_rpy_rate
     self._com_velocity_body_frame = com_velocity_body_frame 
     self._foot_pos_in_base_frame = foot_pos_in_base_frame
+    self.jacobians = jacobians
     
   def calc_torques(self):
     """Computes the torque for stance legs."""
@@ -109,17 +110,27 @@ class convex_MPC:
       contact_forces[i] = np.array(
           predicted_contact_forces[i * self._FORCE_DIMENSION :(i + 1) *
                                    self._FORCE_DIMENSION ])
-    action = {}
+    action = []
     for leg_id, force in contact_forces.items():
       # While "Lose Contact" is useful in simulation, in real environment it's
       # susceptible to sensor noise. Disabling for now.
       # if self._gait_generator.leg_state[
       #     leg_id] == gait_generator_lib.LegState.LOSE_CONTACT:
       #   force = (0, 0, 0)
-      motor_torques = self._robot.MapContactForceToJointTorques(leg_id, force)
+      motor_torques = self.MapContactForceToJointTorques(leg_id, force)
       for joint_id, torque in motor_torques.items():
-        action[joint_id] = (0, 0, 0, 0, torque)
+        action.append(torque)
 
     return action, contact_forces
 
-  pass
+    
+  def MapContactForceToJointTorques(self, leg_id, contact_force):
+    """Maps the foot contact force to the leg joint torques."""
+    jv = self.jacobians[leg_id]
+    all_motor_torques = np.matmul(contact_force, jv)
+    motor_torques = {}
+    com_dof = 6
+    for joint_id in range(leg_id * 3,(leg_id + 1) * 3):
+      motor_torques[joint_id] = all_motor_torques[com_dof + joint_id]
+
+    return motor_torques
