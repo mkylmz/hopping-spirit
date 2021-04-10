@@ -258,11 +258,6 @@ class robot_module:
         pos = self.q[0:3]
         ang_vel = self.qdot[3:6]
         lin_vel = self.qdot[0:3]
-        X0 = np.array([ 0,          0,          ori_eul[2],
-                        pos[0],     pos[1],     pos[2],
-                        ang_vel[0], ang_vel[1], ang_vel[2],
-                        lin_vel[0], lin_vel[1], lin_vel[2],
-                        -9.80665 ] ).reshape(13,1) 
 
         desired_vel = -self.Kp*np.array( [  self.q[0]-self.desired_pos[0], self.q[1] ] ) + np.array( [ self.desired_vel[0],self.desired_vel[1] ] )
         desired_ang_vel = -self.Kp*ori_eul[2] 
